@@ -7,6 +7,7 @@ import jetbrains.buildServer.configs.kotlin.vcs.GitVcsRoot
 import jetbrains.buildServer.configs.kotlin.buildFeatures.dockerSupport
 import jetbrains.buildServer.configs.kotlin.failureConditions.BuildFailureOnMetric
 import jetbrains.buildServer.configs.kotlin.failureConditions.failOnMetricChange
+import jetbrains.buildServer.configs.kotlin.ui.add
 
 version = "2024.03"
 
@@ -84,7 +85,9 @@ fun createBuildConfiguration(platform: String, jdk: String) = BuildType({
     // Set up dependencies for build chain
     if (platform != "linux" || jdk != "17") {
         val linuxJdk17BuildId = "JenkinsCore_linux_JDK17"
-        dependencies.add(DependencySettings(linuxJdk17BuildId))
+        dependencies {
+            snapshot(AbsoluteId(linuxJdk17BuildId)) {}
+        }
     }
 
     // Add retry conditions
