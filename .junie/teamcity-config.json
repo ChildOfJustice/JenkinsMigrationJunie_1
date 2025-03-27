@@ -1,0 +1,69 @@
+{
+  "project": {
+    "name": "MyProject",
+    "description": "Converted from Jenkinsfile",
+    
+    "vcsRoot": {
+      "id": "MyProject_VCS",
+      "name": "MyProject Repository",
+      "type": "git",
+      "fetchUrl": "git@github.com:myorg/myproject.git",
+      "branch": "main"
+    },
+
+    "parameters": {
+      "env.GRADLE_OPTS": "-Dorg.gradle.daemon=false",
+      "env.DOCKER_IMAGE": "my-app-image:latest",
+      "env.REGISTRY": "your-docker-registry.com"
+    },
+
+    "requirements": {
+      "agent": {
+        "system.agent.name": "build-node"
+      }
+    },
+
+    "steps": [
+      {
+        "name": "Gradle Build",
+        "type": "gradle-runner",
+        "parameters": {
+          "tasks": "clean build",
+          "gradleParams": "--info"
+        }
+      },
+      {
+        "name": "Gradle Test",
+        "type": "gradle-runner",
+        "parameters": {
+          "tasks": "test",
+          "gradleParams": "--info"
+        }
+      },
+      {
+        "name": "Build Docker Image",
+        "type": "command-line",
+        "parameters": {
+          "scriptContent": "docker build -t %env.DOCKER_IMAGE% ."
+        }
+      },
+      {
+        "name": "Push Docker Image",
+        "type": "command-line",
+        "parameters": {
+          "scriptContent": "docker tag %env.DOCKER_IMAGE% %env.REGISTRY%/%env.DOCKER_IMAGE%\ndocker push %env.REGISTRY%/%env.DOCKER_IMAGE%"
+        }
+      }
+    ],
+
+    "features": [
+      {
+        "type": "xml-report-plugin",
+        "parameters": {
+          "xmlReportParsing.reportType": "junit",
+          "xmlReportParsing.reportDirs": "**/build/test-results/test/TEST-*.xml"
+        }
+      }
+    ]
+  }
+}
