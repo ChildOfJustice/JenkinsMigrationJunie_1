@@ -1,170 +1,122 @@
-## 1. **Guidelines for Analyzing the Jenkinsfile**
-### Easy-to-Migrate Sections
-- **Environment Variables**:
-   - Can typically map 1:1 with TeamCity parameters in `parameters` JSON.
+### **1. Overview of Migration Process**
+The goal is to migrate the Jenkins CI pipeline script into TeamCity's Kotlin DSL format while ensuring functional parity. The migration will include dynamic builds, stages, configurations, and external integrations where feasible.
+### **2. Use of JSON Files**
+- **`teamcity-config.json` **: This JSON contains the parsed representation of entities already mapped from the Jenkinsfile. Utilize this file to create Project (`project`), VCS Root (`vcsRoot`), Build Configurations (`buildConfiguration`), and Templates in TeamCity.
+- **`teamcity-config-manual-migration.json` **: This file identifies components of the Jenkinsfile that are hard to migrate automatically and provides reasoning and guidelines for manual efforts. Any missing features or areas requiring manual implementation should be logged in this file for completeness. **You must consult and follow the manual steps provided for such cases.**
 
-- **Build Steps**:
-   - Gradle, Maven commands, Docker commands, or shell scripts (`sh`) can directly translate to TeamCity steps (via Gradle/Maven runners or command-line steps).
+### **3. Migration Guidelines**
+#### **3.1 Project Creation**
+- The top-level TeamCity **project** should be created using the details from the `project` section in `teamcity-config.json`.
+- **Description** and **parameters** (like environment variables) should be added to the Project's DSL file.
+- Map Jenkins `properties()` to appropriate Project/Build Template configurations.
 
-- **Parallel Jobs**:
-   - Simple parallelism (e.g., different configurations like JDKs/platforms) translates to TeamCity build configurations or build triggers across branches or matrix builds.
+#### **3.2 VCS Root**
+- Use the `vcsRoot` property from `teamcity-config.json` to define a VCS Root in Kotlin DSL.
+- Map GitHub repository URL, branch (`refs/heads/master`), and mirroring options (`useMirrors`, `useAlternates`) to TeamCity's VCS Root settings.
 
-- **VCS Checkout**:
-   - Jenkins' `checkout scm` aligns well with TeamCity's VCS Roots.
+#### **3.3 Build Templates**
+- Convert Jenkins stages to reusable TeamCity **Build Templates**. The `steps`, `features`, and `parameters` in the `teamcity-config.json` template provide the basis for this mapping.
+- Use `artifactRules` from the template to define artifact handling.
 
-### Complex/Non-Migratable Sections
-- **Dynamic Pipeline Logic**:
-   - Functions that dynamically generate stages (`axes.values().combinations { ... }`) require custom handling. TeamCity doesn’t directly support dynamically generated stages but matrix builds can model this.
+#### **3.4 Build Configurations**
+- If the Jenkinsfile contains dynamic combinations (e.g., of platforms and JDK versions), translate these into separate **Build Configurations** within TeamCity.
+   - For configurations requiring matrix-like parameterization, consider TeamCity Parameterized Builds.
+   - Reference the guidelines in `teamcity-config-manual-migration.json` for dynamic stage generation.
 
-- **Retry Logic**:
-   - `retry` blocks are not natively supported. You'll mimic them by either configuring TeamCity build retries or handling them in build scripts.
+#### **3.5 Build Steps**
+- Map Jenkins `stage()` into sequential TeamCity `steps`:
+   - Use the provided `steps` section in `teamcity-config.json` for predefined mappings.
+   - For unlisted cases, transform remaining Groovy-based logic into Bash/PowerShell or Maven commands (depending on the use).
+   - Example mappings:
+      - Jenkins `node()` maps to TeamCity's agent specification.
+      - Jenkins `retry(condition, count: X)` should be replaced using a retry count mechanism in TeamCity's settings or the manual fallbacks provided in `teamcity-config-manual-migration.json`.
 
-- **Custom/Advanced Post Actions (`post` blocks)**:
-   - Notifications and post-build steps must be replaced with external TeamCity configurations (build triggers for dependent builds or notifications by TeamCity services and plug-ins).
+#### **3.6 Parallel Execution**
+- TeamCity does not directly support `parallel` execution as defined in Jenkins. Instead:
+   - Use **Snapshot Dependencies** or **Build Chains** to implement parallelism.
+   - Refer to the `parallelExecution` section in `teamcity-config-manual-migration.json`.
 
-- **Node-Specific `agent` Labels**:
-   - TeamCity uses build agents, requiring mapping Jenkins node labels to TeamCity agents or agent requirements.
+#### **3.7 Conditional Stages**
+- For Jenkins `if (...)` blocks or stage conditions:
+   - Use **Build Parameters** to define static conditions.
+   - Implement parameter validation and rules for execution as suggested in the manual migration JSON.
 
-## 2. **Mapping Dynamic Stages into Representations**
-### Approach for Dynamic Stages
-Dynamic stages and combinations (e.g., `axes.values().combinations`) in Jenkins must translate into repeatable TeamCity configurations or matrix builds.
-1. **Flatten Dynamic Combinations**:
-   - Each combination (e.g., `linux-jdk17`, `windows-jdk17`) becomes a separate build configuration or build parameter set.
-   - These combinations can be modeled as:
-      - Separate build configurations (duplicating steps but with varying parameters).
-      - Single build configuration with parameterized builds (using "Custom Build Parameters").
+#### **3.8 Artifact Handling**
+- Replace `stash/unstash` in Jenkins with TeamCity's artifact dependencies:
+   - Use artifact resolution and storage as defined in `teamcity-config.json`.
+   - Configure artifact caching between builds.
 
-2. **Intermediate JSON Example**: Use dynamic parameters like `platform` and `jdk` to create combinations:
-``` json
-   {
-     "parameters": {
-       "env.PLATFORM": "linux",
-       "env.JDK_VERSION": "17"
-     },
-     "steps": [
-       {
-         "type": "command-line",
-         "name": "Setup Build Environment",
-         "parameters": {
-           "scriptContent": "echo Setting up build for %env.PLATFORM% with JDK %env.JDK_VERSION%"
-         }
-       },
-       {
-         "type": "maven-runner",
-         "name": "Run Maven Build",
-         "parameters": {
-           "goals": "clean install",
-           "options": "-Dmaven.test.failure.ignore=true -Djdk.version=%env.JDK_VERSION%"
-         }
-       }
-     ]
-   }
-```
-### Translate `retry` Logic
-- Add a generic task wrapper with retry logic in the build shell command:
-``` json
-   {
-     "type": "command-line",
-     "name": "Retry Maven Build",
-     "parameters": {
-       "scriptContent": "for i in {1..2}; do mvn clean install && break || sleep 5; done"
-     }
-   }
-```
-## 3. **Mapping to TeamCity Constructs**
-TeamCity configuration elements directly map to Jenkinsfile elements as follows:
-### Overall Structures
+#### **3.9 Credential Management**
+- Replace Jenkins `withCredentials` with TeamCity's secure storage of credentials.
+   - Refer to the steps in the `launchableIntegration` section of `teamcity-config-manual-migration.json`.
 
-| **Jenkinsfile** | **TeamCity JSON Representation** |
-| --- | --- |
-| `pipeline {}` | Build Configuration(s) |
-| `stage {}` stages | Build Steps for a Configuration |
-| `post {}` blocks (e.g., notifications) | External Setup via TeamCity Plugins or Webhooks |
-| `matrix` combinations | TeamCity Parameterized Build Configurations |
-| `checkout scm` | TeamCity VCS Roots |
-### Build Steps Mapping
-1. **Gradle/Maven/Docker Commands**: Commands like `./gradlew clean build`, `docker build`, etc. translate to corresponding tool runners:
-   - Example for Gradle:
-``` json
-     {
-       "type": "gradle-runner",
-       "name": "Build with Gradle",
-       "parameters": {
-         "tasks": "clean build",
-         "gradleParams": "--info"
-       }
-     }
-```
-1. **Matrix/Parameterized Steps**:
-   Use TeamCity parameters (`env.PLATFORM`, `env.JDK_VERSION`) for stage combinations.
-2. **VCS Checkout**: Example VCS Root definition:
-``` json
-   {
-     "vcsRoot": {
-       "id": "MyVCSRoot",
-       "name": "My Repository",
-       "fetchUrl": "git@github.com:myorg/myproject.git",
-       "branch": "main"
-     }
-   }
-```
-1. **Docker Steps**:
-``` json
-   {
-     "type": "command-line",
-     "name": "Build Docker Image",
-     "parameters": {
-       "scriptContent": "docker build -t %env.DOCKER_IMAGE% ."
-     }
-   }
-```
-## 4. **Example: Full JSON for Combined Dynamic Jenkinsfile**
-Flattened dynamic combinations using `platform` and `jdk` parameters:
-``` json
-{
-  "parameters": {
-    "env.PLATFORM": "linux",
-    "env.JDK_VERSION": "17",
-    "env.BUILD_TIMEOUT": "360"
-  },
-  "steps": [
-    {
-      "type": "command-line",
-      "name": "Echo Parameters",
-      "parameters": {
-        "scriptContent": "echo Running build on %env.PLATFORM% with JDK %env.JDK_VERSION%"
-      }
-    },
-    {
-      "type": "maven-runner",
-      "name": "Run Maven Build",
-      "parameters": {
-        "goals": "clean install",
-        "options": "-Djdk.version=%env.JDK_VERSION% -Dmaven.test.failure.ignore=true"
-      }
-    },
-    {
-      "type": "command-line",
-      "name": "Record Build Session",
-      "parameters": {
-        "scriptContent": "launchable verify && launchable record build --name %env.BUILD_TAG%"
-      }
+#### **3.10 Timeout Handling**
+- For `timeout(time: ..., unit: ...)` in Jenkins, map this to TeamCity's step-specific or build configuration-wide timeout settings.
+
+#### **3.11 Agent Selection**
+- Map Jenkins `node('label')` to TeamCity agent pools and compatibility rules.
+   - Use the `agentSelection` guidelines in the manual migration JSON for this setup.
+
+#### **3.12 Retry Logic**
+- Jenkins' advanced retry conditions (like `kubernetesAgent`) cannot be directly mapped. Use build triggers or retry logic in build scripts where needed.
+- Refer to the `retryLogic` section in the manual migration JSON.
+
+#### **3.13 Custom Groovy Functions**
+- Move custom Groovy functionality into external scripts or meta-runners for TeamCity.
+   - Follow steps in `customGroovyFunctions` for converting them to reusable scripts.
+
+### **4. Output Steps**
+#### **4.1 Kotlin DSL Files**
+- For every element, create Kotlin DSL files such as:
+   - **Projects** matching `teamcity-config.json > project`.
+   - **Build Templates** that consolidate build steps.
+   - **Build Configurations** for every platform-JDK combination.
+   - **VCS Root** for the Git repository.
+
+#### **4.2 Update JSON Files**
+1. **`teamcity-config.json` Updates**:
+   - Include any newly derived build configurations, parameters, or templates.
+   - Specify changes to artifact storage or repository settings.
+
+2. **`teamcity-config-manual-migration.json` Updates**:
+   - Identify additional parts of the Jenkinsfile that could not be migrated automatically.
+   - Log comments for manual migration or adjustments following guidelines.
+
+### **5. Example Mapping**
+Here's a snippet of how the `Jenkinsfile` components could map to TeamCity Kotlin DSL:
+**Jenkinsfile:**
+``` groovy
+stage('Record build') {
+  retry(conditions: [kubernetesAgent()], count: 2) {
+    node('maven-17') {
+      sh 'launchable record ...'
     }
-  ]
+  }
 }
 ```
-## 5. **Recommendations for Kotlin DSL Conversion**
-Once the intermediate JSON is ready:
-- Translate parameters into a Kotlin `param` block.
-- Convert steps into `steps {}` blocks in Kotlin DSL.
-- Use loops for combinations (matrix builds) for DRY (Don't Repeat Yourself) logic:
+**TeamCity Kotlin DSL:**
 ``` kotlin
-   steps {
-       gradle {
-           name = "Gradle Build for $platform and JDK $jdk"
-           tasks = "clean build"
-           param("env.PLATFORM", platform)
-           param("env.JDK_VERSION", jdk)
-       }
-   }
+import jetbrains.buildServer.configs.kotlin.v2023_2.*
+
+object BuildStepRecord : BuildType({
+    name = "Record Build"
+    vcs {
+        root(JenkinsCore.vcsRoot)
+    }
+    steps {
+        script {
+            scriptContent = "launchable verify && launchable record build..."
+        }
+    }
+    agentRequirement {
+        contains("teamcity.agent.name", "maven-17")
+    }
+    failureConditions {
+        executionTimeoutMin = 360
+    }
+})
 ```
+### **6. Manual Review Checklist**
+- Ensure all build configurations match their Jenkinsfile counterparts.
+- Verify dynamic stage replacements align with TeamCity's limitations.
+- Double-check custom scripts and external integrations for functionality.
