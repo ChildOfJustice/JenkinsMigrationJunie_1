@@ -1,0 +1,269 @@
+{
+  "hardToMigrateComponents": {
+    "dynamicStageGeneration": {
+      "jenkinsCode": "axes.values().combinations { ... }",
+      "reason": "Jenkins uses Groovy to dynamically generate stages. TeamCity doesn't support runtime stage generation. Each combination needs to be explicitly defined as a separate build configuration.",
+      "manualSteps": [
+        "Identify all possible combinations",
+        "Create separate build configurations for each combination",
+        "Set up dependencies between configurations",
+        "Consider using TeamCity's matrix parameters for simpler cases"
+      ]
+    },
+
+    "retryLogic": {
+      "jenkinsCode": "retry(conditions: [kubernetesAgent(handleNonKubernetes: true), nonresumable()], count: 2)",
+      "reason": "Jenkins has sophisticated retry conditions with custom handlers. TeamCity's retry mechanism is more basic.",
+      "manualSteps": [
+        "Configure basic retry count in build configuration",
+        "Implement custom retry logic in build scripts",
+        "Use TeamCity's build triggers for more complex scenarios"
+      ]
+    },
+
+    "agentSelection": {
+      "jenkinsCode": "node('maven-17')",
+      "reason": "Jenkins uses labels for dynamic agent selection. TeamCity uses agent requirements and pools which need different configuration.",
+      "manualSteps": [
+        "Map Jenkins node labels to TeamCity agent requirements",
+        "Create agent pools matching Jenkins node groups",
+        "Configure agent compatibility requirements"
+      ]
+    },
+
+    "launchableIntegration": {
+      "jenkinsCode": "withCredentials([string(credentialsId: 'launchable-jenkins-jenkins', variable: 'LAUNCHABLE_TOKEN')])",
+      "reason": "Jenkins has built-in credential management with dynamic injection. TeamCity needs different credential handling.",
+      "manualSteps": [
+        "Set up TeamCity credential providers",
+        "Configure environment variables for tokens",
+        "Adjust Launchable integration scripts"
+      ]
+    },
+
+    "customGroovyFunctions": {
+      "jenkinsCode": "infra.checkoutSCM()",
+      "reason": "Jenkins pipelines can use custom Groovy functions. These need to be reimplemented in TeamCity.",
+      "manualSteps": [
+        "Identify custom function usage",
+        "Create equivalent PowerShell/Bash scripts",
+        "Move logic to build steps or meta-runners"
+      ]
+    },
+
+    "parallelExecution": {
+      "jenkinsCode": "parallel builds",
+      "reason": "Jenkins handles parallel execution differently. TeamCity needs explicit configuration.",
+      "manualSteps": [
+        "Configure snapshot dependencies",
+        "Set up build chains",
+        "Configure parallel execution policies"
+      ]
+    },
+
+    "conditionalStages": {
+      "jenkinsCode": "if (platform == 'windows' && jdk != 17) { return }",
+      "reason": "Jenkins supports dynamic condition evaluation. TeamCity needs static configuration.",
+      "manualSteps": [
+        "Convert conditions to build parameters",
+        "Use parameter-based build triggers",
+        "Configure build conditions in settings"
+      ]
+    },
+
+    "artifactHandling": {
+      "jenkinsCode": "stash name: sessionFile, includes: sessionFile",
+      "reason": "Jenkins has built-in stash/unstash for temporary artifacts. TeamCity uses different artifact handling.",
+      "manualSteps": [
+        "Configure artifact dependencies",
+        "Set up artifact patterns",
+        "Use build cache for temporary files"
+      ]
+    },
+
+    "environmentSetup": {
+      "jenkinsCode": "def tmpDir = pwd(tmp: true)",
+      "reason": "Jenkins provides workspace management functions. TeamCity uses different workspace handling.",
+      "manualSteps": [
+        "Use TeamCity system properties for paths",
+        "Configure workspace cleanup rules",
+        "Adjust build scripts for TeamCity paths"
+      ],
+      "complexity": "medium"
+    },
+
+    "timeoutHandling": {
+      "jenkinsCode": "timeout(time: 6, unit: 'HOURS')",
+      "reason": "Jenkins timeout blocks can be nested and have different scopes. TeamCity has global timeout settings.",
+      "manualSteps": [
+        "Configure build timeout in build configuration",
+        "Add script-level timeout handling",
+        "Implement custom timeout monitoring"
+      ],
+      "complexity": "medium"
+    },
+
+    "postBuildActions": {
+      "jenkinsCode": "post { always { ... } }",
+      "reason": "Jenkins post-build actions are more flexible and can be conditional. TeamCity needs different approach.",
+      "manualSteps": [
+        "Configure build features for notifications",
+        "Set up finish build triggers",
+        "Create separate configurations for post-build tasks"
+      ],
+      "complexity": "high"
+    },
+
+    "pipelineVisualization": {
+      "jenkinsCode": "stage('Build') { ... }",
+      "reason": "Jenkins Pipeline stages are visualized differently from TeamCity build chains.",
+      "manualSteps": [
+        "Restructure build chain visualization",
+        "Configure build dependencies for proper flow",
+        "Set up custom build progress reporting"
+      ],
+      "complexity": "low"
+    },
+
+    "buildHistory": {
+      "jenkinsCode": "buildDiscarder(logRotator(numToKeepStr: '50', artifactNumToKeepStr: '3'))",
+      "reason": "Jenkins and TeamCity handle build history and cleanup differently.",
+      "manualSteps": [
+        "Configure cleanup rules for each build configuration",
+        "Set up artifact cleanup policies",
+        "Implement custom cleanup scripts if needed"
+      ],
+      "complexity": "medium"
+    }
+  },
+
+  "migrationComplexity": {
+    "high": [
+      "dynamicStageGeneration",
+      "postBuildActions",
+      "customGroovyFunctions"
+    ],
+    "medium": [
+      "retryLogic",
+      "agentSelection",
+      "launchableIntegration",
+      "environmentSetup",
+      "timeoutHandling",
+      "buildHistory"
+    ],
+    "low": [
+      "parallelExecution",
+      "conditionalStages",
+      "artifactHandling",
+      "pipelineVisualization"
+    ]
+  },
+
+  "recommendations": {
+    "preImplementation": [
+      "Review all custom Groovy functions and create equivalent scripts",
+      "Map all node labels to TeamCity agent requirements",
+      "Plan build chain structure for parallel execution",
+      "Set up credential providers in TeamCity"
+    ],
+    "postImplementation": [
+      "Verify build dependencies work as expected",
+      "Test artifact publishing and cleanup",
+      "Validate agent selection logic",
+      "Check retry behavior matches Jenkins configuration",
+      "Verify timeout handling across all builds",
+      "Test post-build actions and notifications",
+      "Validate build history retention policies"
+    ],
+    "requiredExpertise": [
+      "Jenkins Pipeline syntax and features",
+      "TeamCity configuration and DSL",
+      "Build automation and CI/CD practices",
+      "Groovy scripting",
+      "PowerShell/Bash scripting"
+    ],
+
+    "migrationRisks": {
+      "buildReproducibility": {
+        "risk": "Dynamic stages in Jenkins might not be exactly reproducible in TeamCity",
+        "impact": "high",
+        "mitigation": [
+          "Document all possible stage combinations before migration",
+          "Create comprehensive test suite for build configurations",
+          "Implement validation scripts to compare Jenkins and TeamCity builds"
+        ]
+      },
+      "performanceImpact": {
+        "risk": "Different parallelization strategies might affect build performance",
+        "impact": "medium",
+        "mitigation": [
+          "Benchmark build times before and after migration",
+          "Optimize build chains and dependencies",
+          "Monitor resource usage patterns"
+        ]
+      },
+      "scriptCompatibility": {
+        "risk": "Custom Groovy scripts might not work in TeamCity context",
+        "impact": "high",
+        "mitigation": [
+          "Convert Groovy scripts to platform-independent shell scripts",
+          "Create TeamCity meta-runners for common operations",
+          "Maintain script versioning and testing"
+        ]
+      },
+      "artifactManagement": {
+        "risk": "Different artifact handling might affect downstream builds",
+        "impact": "medium",
+        "mitigation": [
+          "Test artifact publishing and consumption patterns",
+          "Verify artifact cleanup policies",
+          "Implement artifact validation checks"
+        ]
+      }
+    },
+
+    "rollbackProcedures": {
+      "preRequisites": [
+        "Maintain parallel Jenkins and TeamCity configurations during migration",
+        "Document all configuration changes and dependencies",
+        "Create configuration backups at each migration step"
+      ],
+      "validationCheckpoints": [
+        "Build success rate comparison",
+        "Test coverage verification",
+        "Build time and resource usage analysis",
+        "Artifact consistency check"
+      ],
+      "rollbackSteps": [
+        "Disable TeamCity build configurations",
+        "Restore Jenkins build triggers",
+        "Verify system state after rollback",
+        "Update deployment configurations"
+      ]
+    },
+
+    "testingStrategy": {
+      "unitTests": [
+        "Verify individual build step execution",
+        "Test parameter substitution",
+        "Validate environment setup"
+      ],
+      "integrationTests": [
+        "Test build chain execution",
+        "Verify artifact dependencies",
+        "Check notification systems"
+      ],
+      "performanceTests": [
+        "Compare build times",
+        "Analyze resource usage",
+        "Test concurrent builds"
+      ],
+      "acceptanceCriteria": [
+        "All tests pass with same results as in Jenkins",
+        "Build times within 10% of original",
+        "All artifacts correctly published and consumed",
+        "Notification systems working as expected"
+      ]
+    }
+  }
+}
