@@ -1,11 +1,11 @@
-import jetbrains.buildServer.configs.kotlin.v2023_2.*
-import jetbrains.buildServer.configs.kotlin.v2023_2.buildFeatures.perfmon
-import jetbrains.buildServer.configs.kotlin.v2023_2.buildSteps.maven
-import jetbrains.buildServer.configs.kotlin.v2023_2.buildSteps.script
-import jetbrains.buildServer.configs.kotlin.v2023_2.triggers.vcs
-import jetbrains.buildServer.configs.kotlin.v2023_2.vcs.GitVcsRoot
+import jetbrains.buildServer.configs.kotlin.*
+import jetbrains.buildServer.configs.kotlin.buildFeatures.perfmon
+import jetbrains.buildServer.configs.kotlin.buildSteps.maven
+import jetbrains.buildServer.configs.kotlin.buildSteps.script
+import jetbrains.buildServer.configs.kotlin.triggers.vcs
+import jetbrains.buildServer.configs.kotlin.vcs.GitVcsRoot
 
-version = "2023.2"
+version = "2024.03"
 
 project {
     description = "Jenkins Core Build Configuration converted from Jenkinsfile"
@@ -27,8 +27,9 @@ project {
         branchSpec = """
             +:refs/heads/*
         """.trimIndent()
-        useAlternates = true
-        useMirrors = true
+//        useAlternates = true
+        checkoutPolicy = GitVcsRoot.AgentCheckoutPolicy.USE_MIRRORS
+//        useMirrors = true
     }
     vcsRoot(vcsRoot)
 
@@ -70,7 +71,7 @@ object BuildTemplate : Template({
                 echo "Preparing build environment for %env.PLATFORM% with JDK %env.JDK_VERSION%"
             """.trimIndent()
         }
-
+//        maven {  }
         maven {
             name = "Maven Build and Test"
             goals = "clean install"
@@ -97,7 +98,7 @@ object BuildTemplate : Template({
 
     features {
         perfmon {}
-        
+
         // XML report processing
         feature {
             type = "xml-report-plugin"
