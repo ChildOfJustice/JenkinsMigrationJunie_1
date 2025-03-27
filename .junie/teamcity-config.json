@@ -1,67 +1,190 @@
 {
   "project": {
-    "name": "MyProject",
-    "description": "Converted from Jenkinsfile",
-    
-    "vcsRoot": {
-      "id": "MyProject_VCS",
-      "name": "MyProject Repository",
-      "type": "git",
-      "fetchUrl": "git@github.com:myorg/myproject.git",
-      "branch": "main"
-    },
+    "id": "JenkinsCore",
+    "name": "Jenkins Core Build",
+    "description": "Jenkins Core Build Configuration converted from Jenkinsfile",
 
     "parameters": {
-      "env.GRADLE_OPTS": "-Dorg.gradle.daemon=false",
-      "env.DOCKER_IMAGE": "my-app-image:latest",
-      "env.REGISTRY": "your-docker-registry.com"
+      "env.BUILD_RETENTION_COUNT": "50",
+      "env.ARTIFACT_RETENTION_COUNT": "3",
+      "env.FAIL_FAST": "false",
+      "env.LAUNCHABLE_TOKEN": "credentialsJSON:launchable-jenkins-jenkins",
+      "env.BUILD_TAG": "%teamcity.build.id%"
     },
 
-    "requirements": {
-      "agent": {
-        "system.agent.name": "build-node"
+    "vcsRoot": {
+      "id": "JenkinsCore_VCSRoot",
+      "name": "Jenkins Core Repository",
+      "type": "jetbrains.git",
+      "properties": {
+        "url": "https://github.com/jenkinsci/jenkins.git",
+        "branch": "refs/heads/master",
+        "useAlternates": "true",
+        "useMirrors": "true"
       }
     },
 
-    "steps": [
+    "templates": [
       {
-        "name": "Gradle Build",
-        "type": "gradle-runner",
-        "parameters": {
-          "tasks": "clean build",
-          "gradleParams": "--info"
-        }
-      },
-      {
-        "name": "Gradle Test",
-        "type": "gradle-runner",
-        "parameters": {
-          "tasks": "test",
-          "gradleParams": "--info"
-        }
-      },
-      {
-        "name": "Build Docker Image",
-        "type": "command-line",
-        "parameters": {
-          "scriptContent": "docker build -t %env.DOCKER_IMAGE% ."
-        }
-      },
-      {
-        "name": "Push Docker Image",
-        "type": "command-line",
-        "parameters": {
-          "scriptContent": "docker tag %env.DOCKER_IMAGE% %env.REGISTRY%/%env.DOCKER_IMAGE%\ndocker push %env.REGISTRY%/%env.DOCKER_IMAGE%"
-        }
+        "id": "JenkinsCore_BuildTemplate",
+        "name": "Jenkins Core Build Template",
+        "description": "Template for Jenkins Core builds",
+        "settings": {
+          "buildNumberPattern": "%build.counter%",
+          "artifactRules": "+:**/*.jar\n+:**/*.war\n+:**/*.zip\n+:**/target/surefire-reports/** => test-reports.zip\n+:**/target/site/jacoco/** => coverage-report.zip",
+          "maximumNumberOfBuilds": 50,
+          "executionTimeoutMin": 360
+        },
+        "steps": [
+          {
+            "name": "Prepare Build Environment",
+            "type": "script",
+            "properties": {
+              "script.content": "echo 'Preparing build environment for %env.PLATFORM% with JDK %env.JDK_VERSION%'"
+            }
+          },
+          {
+            "name": "Maven Build and Test",
+            "type": "maven",
+            "properties": {
+              "goals": "clean install",
+              "mavenSelection": "mavenSelection:default",
+              "localRepoScope": "build",
+              "maven.path": "%teamcity.tool.maven.DEFAULT%",
+              "teamcity.step.mode": "default",
+              "maven.properties": "-Pdebug\n-Penable-jacoco\n--update-snapshots\n-Dmaven.repo.local=%system.teamcity.build.tempDir%/m2repo\n-Dmaven.test.failure.ignore=true\n-DforkCount=2\n-Dspotbugs.failOnError=false\n-Dcheckstyle.failOnViolation=false\n-Dset.changelist"
+            }
+          },
+          {
+            "name": "Publish Test Results",
+            "type": "tcPlugin:xmlReportPlugin",
+            "properties": {
+              "xmlReportParsing.reportType": "junit",
+              "xmlReportParsing.reportDirs": "**/target/surefire-reports/*.xml"
+            }
+          },
+          {
+            "name": "Publish Coverage",
+            "type": "jacoco",
+            "properties": {
+              "jacoco.reportPaths": "**/target/jacoco.exec",
+              "jacoco.classPaths": "**/target/classes",
+              "jacoco.sourcePaths": "**/src/main/java"
+            }
+          },
+          {
+            "name": "Record Launchable Tests",
+            "type": "script",
+            "properties": {
+              "script.content": "launchable verify && launchable record tests --session %env.BUILD_TAG% --flavor platform=%env.PLATFORM% --flavor jdk=%env.JDK_VERSION% maven './**/target/surefire-reports'"
+            }
+          },
+          {
+            "name": "Analyze Code Quality",
+            "type": "maven",
+            "properties": {
+              "goals": "spotbugs:check checkstyle:check",
+              "mavenSelection": "mavenSelection:default",
+              "maven.path": "%teamcity.tool.maven.DEFAULT%"
+            }
+          }
+        ],
+        "features": [
+          {
+            "type": "xml-report-plugin",
+            "properties": {
+              "xmlReportParsing.reportType": "junit",
+              "xmlReportParsing.reportDirs": "**/target/surefire-reports/*.xml"
+            }
+          },
+          {
+            "type": "spotbugs-report",
+            "properties": {
+              "spotbugs.report.paths": "**/target/spotbugsXml.xml"
+            }
+          },
+          {
+            "type": "checkstyle-report",
+            "properties": {
+              "checkstyle.report.paths": "**/target/checkstyle-result.xml"
+            }
+          }
+        ],
+        "requirements": [
+          {
+            "id": "RQ_1",
+            "type": "exists",
+            "properties": {
+              "property-name": "env.JDK_%env.JDK_VERSION%_HOME"
+            }
+          }
+        ]
       }
     ],
 
-    "features": [
+    "buildTypes": [
       {
-        "type": "xml-report-plugin",
+        "id": "JenkinsCore_Linux_JDK17",
+        "name": "Jenkins Core - Linux JDK 17",
+        "description": "Linux build with JDK 17",
+        "template": "JenkinsCore_BuildTemplate",
         "parameters": {
-          "xmlReportParsing.reportType": "junit",
-          "xmlReportParsing.reportDirs": "**/build/test-results/test/TEST-*.xml"
+          "env.PLATFORM": "linux",
+          "env.JDK_VERSION": "17"
+        },
+        "dependencies": {
+          "snapshot": [],
+          "artifact": []
+        }
+      },
+      {
+        "id": "JenkinsCore_Linux_JDK21",
+        "name": "Jenkins Core - Linux JDK 21",
+        "description": "Linux build with JDK 21",
+        "template": "JenkinsCore_BuildTemplate",
+        "parameters": {
+          "env.PLATFORM": "linux",
+          "env.JDK_VERSION": "21"
+        },
+        "dependencies": {
+          "snapshot": [
+            {
+              "id": "JenkinsCore_Linux_JDK17",
+              "onDependencyFailure": "FAIL_TO_START",
+              "onDependencyCancel": "CANCEL"
+            }
+          ],
+          "artifact": [
+            {
+              "id": "JenkinsCore_Linux_JDK17",
+              "artifactRules": "+:**/*.jar\n+:**/*.war\n+:**/*.zip => artifacts"
+            }
+          ]
+        }
+      },
+      {
+        "id": "JenkinsCore_Windows_JDK17",
+        "name": "Jenkins Core - Windows JDK 17",
+        "description": "Windows build with JDK 17",
+        "template": "JenkinsCore_BuildTemplate",
+        "parameters": {
+          "env.PLATFORM": "windows",
+          "env.JDK_VERSION": "17"
+        },
+        "dependencies": {
+          "snapshot": [
+            {
+              "id": "JenkinsCore_Linux_JDK17",
+              "onDependencyFailure": "FAIL_TO_START",
+              "onDependencyCancel": "CANCEL"
+            }
+          ],
+          "artifact": [
+            {
+              "id": "JenkinsCore_Linux_JDK17",
+              "artifactRules": "+:**/*.jar\n+:**/*.war\n+:**/*.zip => artifacts"
+            }
+          ]
         }
       }
     ]
