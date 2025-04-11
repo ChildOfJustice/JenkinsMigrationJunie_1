@@ -55,6 +55,8 @@ https://github.com/ChildOfJustice/JenkinsMigrationJunie_1/commit/5203f38bdd3f18a
 
 Migrate this Jenkinsfile into TeamCity Kotlin dsl configuration and use guidelines provided and example settings in json which has the main abstract parts of the Jenkinsfile, and also json file with comments on parts that could be migrated only manually. If Kotlin cannot be built or maven has some problems, or there are unresolved references - thats ok, dont need to fix that
 
+`NOTE: the generated settings.kts was fixed by another Junie in a second project where settings were imported as a maven project (see https://github.com/ChildOfJustice/JenkinsMigrationJunie_1/commit/35aa4cb1cd8230814d773f66bd77ecfb28da7284)`
+
 ### Result
 https://github.com/ChildOfJustice/JenkinsMigrationJunie_1/commit/5203f38bdd3f18a9909f30355fc8aca5553d5cf3
 
